@@ -6,8 +6,6 @@
 #define DEFAULT_PORT      (12345)
 #define CONNECTIONS_COUNT (128)
 
-/* TODO: проверять возвращаемые значения malloc */
-
 const char * path;
 static int counter;
 
@@ -26,11 +24,26 @@ typedef struct write_buf_ write_buf_t;
 write_buf_t * init_write_buf(char * buf, ssize_t nread)
 {
     write_buf_t * write_buf = malloc(sizeof(write_buf_t));
+    if(write_buf == NULL) {
+        goto err;
+    }
+
     /* TODO: fix inline malloc */
-    write_buf->buffer = uv_buf_init(malloc(nread), nread);
+    char *base = malloc(nread);
+    if(base == NULL) {
+        goto err_base;
+    }
+
+    write_buf->buffer = uv_buf_init(base, nread);
     memcpy(write_buf->buffer.base, buf, nread);
 
     return write_buf;
+
+err_base:
+    free(write_buf);
+err:
+    perror("memory allocation:");
+    return NULL;
 }
 
 void release_write_buf(write_buf_t * write_buf)
@@ -41,8 +54,11 @@ void release_write_buf(write_buf_t * write_buf)
 
 server_ctx_t * init_server_ctx(uv_tcp_t *client)
 {
-    /* Инициализируем контектс задачи(сохранения файла) */
     server_ctx_t * ctx = malloc(sizeof(server_ctx_t));
+    if(ctx == NULL) {
+        perror("Memory allocation:");
+        return NULL;
+    }
     ctx->open_req = malloc(sizeof(uv_fs_t));
     ctx->client = client;
     ctx->client->data = ctx;
@@ -54,8 +70,6 @@ server_ctx_t * init_server_ctx(uv_tcp_t *client)
 
 void release_server_ctx(server_ctx_t *ctx)
 {
-    /* Освобождаем контекст задачи */
-    /* Закрываем соединение синхронно */
     uv_close((uv_handle_t*) ctx->client, NULL);
     uv_fs_req_cleanup(ctx->open_req);
     free(ctx->client);
@@ -66,6 +80,7 @@ void release_server_ctx(server_ctx_t *ctx)
 void alloc_buffer_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
 {
     buf->base = (char*) malloc(suggested_size);
+    /*TODO: посмотреть что будет если память не будет выделена */
     buf->len = suggested_size;
 }
 
@@ -74,6 +89,8 @@ void file_write_cb(uv_fs_t *req)
     if (req->result < 0) {
         fprintf(stderr, "Write error: %s\n", uv_strerror((int)req->result));
     }
+
+    /*TODO: почему если запись не вышла, приложение зависает */
 
     write_buf_t * buf = req->data;
     release_write_buf(buf);
@@ -87,7 +104,7 @@ void file_close_cb(uv_fs_t *req)
     server_ctx_t *ctx = req->data;
     uv_fs_req_cleanup(req);
     free(req);
-    /* а теперь освобождаем контекст задачи */
+
     release_server_ctx(ctx);
 }
 
@@ -105,8 +122,15 @@ void socket_read_cb(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
     } else if (nread > 0) {
         /* Полученные данные пишем в файл */
         uv_fs_t *req = (uv_fs_t *) malloc(sizeof(uv_fs_t));
+        if(req == NULL) {
+            goto out;
+        }
         /* Что бы потом освободить память сохраняем указатель на буфер */
         write_buf_t * write_buf = init_write_buf(buf->base, nread);
+        if(write_buf == NULL) {
+            free(req);
+            goto out;
+        }
         req->data = (void *)write_buf;
 
         uv_fs_write(uv_default_loop(), req, (uv_file)ctx->open_req->result, &write_buf->buffer, 1, ctx->offset, file_write_cb);
@@ -114,6 +138,7 @@ void socket_read_cb(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf)
         ctx->offset += nread;
     }
 
+out:
     if(buf->base)
         free(buf->base);
 }
@@ -125,7 +150,7 @@ void file_open_cb(uv_fs_t * req)
         /* Файл открыт, начинаем принимать данные */
         uv_read_start((uv_stream_t *) ctx->client, alloc_buffer_cb, socket_read_cb);
     } else {
-        fprintf(stderr, "error opening file: %s\n", uv_strerror((int)req->result));
+        fprintf(stderr, "Error opening file: %s\n", uv_strerror((int)req->result));
         /* Ошибка открытия файла, просто освобождаем контекст задачи */
         release_server_ctx(ctx);
     }
@@ -139,6 +164,10 @@ void accept_connection_cb(uv_stream_t *server, int status)
     }
 
     uv_tcp_t *client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
+    if(client == NULL) {
+        perror("Memory allocation:");
+        return;
+    }
     uv_tcp_init(uv_default_loop(), client);
 
     if (uv_accept(server, (uv_stream_t*) client) == 0) {
@@ -171,7 +200,7 @@ int main(int argc, const char* argv[])
         exit(EXIT_FAILURE);
     }
 
-    port = atoi(argv[1]);
+    port = (uint16_t)atoi(argv[1]);
 
     dir = opendir(argv[2]);
     if (dir) {
@@ -181,7 +210,7 @@ int main(int argc, const char* argv[])
         /* не существует, создаем */
         mkdir(argv[2], 0700);
     } else {
-        perror("opendir:");
+        perror("Opendir:");
         exit(EXIT_FAILURE);
     }
     path = argv[2];
