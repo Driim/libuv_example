@@ -13,9 +13,9 @@ endif (LIBUV_FOUND)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11")
 
 set(SOURCE_FILES_CLIENT client.c)
-set(SOURCE_FILES_SERVER server.c)
+set(SOURCE_FILES_SERVER echo-server.c)
 
 add_executable(client ${SOURCE_FILES_CLIENT})
-add_executable(server ${SOURCE_FILES_SERVER})
+add_executable(echo-server ${SOURCE_FILES_SERVER})
 
-target_link_libraries (server ${CMAKE_THREAD_LIBS_INIT} ${LIBUV_LIBRARIES} rt m)
+target_link_libraries (echo-server ${CMAKE_THREAD_LIBS_INIT} ${LIBUV_LIBRARIES} rt m)
