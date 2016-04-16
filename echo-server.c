@@ -60,9 +60,9 @@ int main(int argc, const char* argv[])
     uv_tcp_t server;
     struct sockaddr_in addr;
 
-    fprintf(stdout, "libuv_example\n");
+    fprintf(stdout, "libuv_example echo-server\n");
 
-    if(argc < 1) {
+    if(argc <= 1) {
         port = DEFAULT_PORT;
     } else {
         port = atoi(argv[1]);
