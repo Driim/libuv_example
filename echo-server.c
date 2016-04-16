@@ -48,8 +48,7 @@ void accept_connection_cb(uv_stream_t *server, int status)
 
     if (uv_accept(server, (uv_stream_t*) client) == 0) {
         uv_read_start((uv_stream_t *) client, alloc_buffer_cb, socket_read_cb);
-    }
-    else {
+    } else {
         uv_close((uv_handle_t*) client, NULL);
     }
 }
